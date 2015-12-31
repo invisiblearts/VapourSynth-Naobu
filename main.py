@@ -1,25 +1,38 @@
 import os
 import math
+import functools
 
 import vapoursynth
 import caffe
 import numpy
 
-
-def FrameWaifu(frame, net, block_h, block_w):
-    assert(isinstance(frame, vapoursynth.VideoFrame))
+def FrameWaifu(n, clip, net, block_h, block_w):
+    assert(isinstance(clip, vapoursynth.VideoNode))
     assert(isinstance(net, caffe.Net))
-    frameArr = numpy.array(frame.get_read_array(0), copy=False)
+    pad_dim = 7
+    frame = clip.get_frame(n)
+    frameArr = numpy.array(frame.get_read_array(0), copy=True)
+
+    orig_width = frameArr.shape[1]
+    orig_height = frameArr.shape[0]
+    padded_width = math.ceil(orig_width / block_w)
+    padded_height = math.ceil(orig_height / block_h)
+    get_pad_dim = lambda padded, orig: (math.floor((padded - orig) / 2), math.ceil((padded - orig) / 2))
+    frameArr = numpy.pad(frameArr,
+                         (get_pad_dim(padded_height, orig_height), get_pad_dim(padded_width, orig_width)),
+                         'reflect')
     inList = []
     outList = []
     for i in numpy.hsplit(frameArr, int(frame.width / block_w)):
-        inList.extend(numpy.vsplit(i, int(frame.height / block_h)))
+        inList.append(numpy.vsplit(i, int(frame.height / block_h)))
     for i in inList:
-        net.blobs['input'].data[...] = i
-        outList.append(net.forward())
+        for j in i:
+            j = numpy.pad(i, pad_dim, 'reflect')
+            net.blobs['input'].data[...] = j
+            outList.append(net.forward()['conv7'])
 
 
-def Waifu2x(clip, block_w = 142, block_h = 142, mode = 0):
+def Waifu2x(clip, block_w=128, block_h=128, mode=0):
     vs_core = vapoursynth.get_core()
     func_name = 'Waifu2x'
     scriptDir = os.path.split(os.path.realpath(__file__))[0]
@@ -41,7 +54,6 @@ def Waifu2x(clip, block_w = 142, block_h = 142, mode = 0):
     if sFormat.bytes_per_sample is not 4 or sFormat.sample_type is not vapoursynth.FLOAT:
         raise ValueError(func_name + r': Sample type/depth not supported! Must be 32bit float!')
 
-
     if sColorFamily == vapoursynth.YUV:
         modelPath = scriptDir + os.sep + modelDir[0] + os.sep + model[mode]
         protoPath = scriptDir + os.sep + modelDir[0] + os.sep + proto
@@ -60,11 +72,7 @@ def Waifu2x(clip, block_w = 142, block_h = 142, mode = 0):
     else:
         pre1 = clip
 
-    padded_width = math.ceil(pre1.width / block_w) * block_w
-    padded_height = math.ceil(pre1.height / block_h) * block_h
+    returnClip = vs_core.std.FrameEval(pre1,functools.partial(
+            FrameWaifu, clip=pre1, net=net, block_h=block_h, block_w=block_w))
 
-    # Pad image
-    pre2 = vs_core.fmtc.resample(pre1, padded_width, padded_height, (pre1.width - padded_width) / 2,
-                                (pre1.height - padded_height) / 2, padded_width, padded_height,
-                                 planes=[3, 1, 1])
-
+    return returnClip
