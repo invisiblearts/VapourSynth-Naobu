@@ -6,6 +6,7 @@ import vapoursynth
 import caffe
 import numpy
 
+
 def FrameWaifu(n, clip, net, block_h, block_w):
     assert(isinstance(clip, vapoursynth.VideoNode))
     assert(isinstance(net, caffe.Net))
@@ -26,10 +27,17 @@ def FrameWaifu(n, clip, net, block_h, block_w):
     for i in numpy.hsplit(frameArr, int(frame.width / block_w)):
         inList.append(numpy.vsplit(i, int(frame.height / block_h)))
     for i in inList:
+        tmp = []
         for j in i:
             j = numpy.pad(i, pad_dim, 'reflect')
             net.blobs['input'].data[...] = j
-            outList.append(net.forward()['conv7'])
+            tmp.append(net.forward()['conv7'])
+        outList.append(tmp)
+    tmpList = []
+    for i in outList:
+        tmpList.append(numpy.vstack(tuple(i)))
+    outArr = numpy.hstack(tuple(tmpList))
+
 
 
 def Waifu2x(clip, block_w=128, block_h=128, mode=0):
