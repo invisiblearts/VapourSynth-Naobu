@@ -18,10 +18,12 @@ def FrameWaifu(n, clip, net, block_h, block_w):
     orig_height = frameArr.shape[0]
     padded_width = math.ceil(orig_width / block_w)
     padded_height = math.ceil(orig_height / block_h)
-    get_pad_dim = lambda padded, orig: (math.floor((padded - orig) / 2), math.ceil((padded - orig) / 2))
-    frameArr = numpy.pad(frameArr,
-                         (get_pad_dim(padded_height, orig_height), get_pad_dim(padded_width, orig_width)),
-                         'reflect')
+    padded_h1, padded_h2, padded_w1, padded_w2 = math.floor((padded_height - orig_height) / 2),\
+    math.ceil((padded_height - orig_height) / 2),\
+    math.floor((padded_width - orig_width) / 2),\
+    math.floor((padded_width - orig_width) / 2)
+
+    frameArr = numpy.pad(frameArr, ((padded_h1, padded_h2), (padded_w1, padded_w2)), 'reflect')
     inList = []
     outList = []
     for i in numpy.hsplit(frameArr, int(frame.width / block_w)):
@@ -37,6 +39,8 @@ def FrameWaifu(n, clip, net, block_h, block_w):
     for i in outList:
         tmpList.append(numpy.vstack(tuple(i)))
     outArr = numpy.hstack(tuple(tmpList))
+    outArr = outArr[padded_h1:-padded_h2, padded_w1:-padded_w2]
+
 
 
 
