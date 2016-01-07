@@ -1,47 +1,58 @@
 import os
 import math
 import functools
+import sys
 
 import vapoursynth
 import caffe
 import numpy
 
 
-def FrameWaifu(n, clip, net, block_h, block_w):
-    assert(isinstance(clip, vapoursynth.VideoNode))
-    assert(isinstance(net, caffe.Net))
+def FrameWaifu(n, f, net, block_h, block_w):
+    assert (isinstance(f, vapoursynth.VideoFrame))
+    assert (isinstance(net, caffe.Net))
     pad_dim = 7
-    frame = clip.get_frame(n)
-    frameArr = numpy.array(frame.get_read_array(0), copy=True)
+    net.blobs['input'].reshape(1, 1, 2 * pad_dim + block_h, 2 * pad_dim+block_w)
+    frame = f.copy()
+    frameArr = numpy.array(frame.get_read_array(0), copy=False)
 
     orig_width = frameArr.shape[1]
     orig_height = frameArr.shape[0]
-    padded_width = math.ceil(orig_width / block_w)
-    padded_height = math.ceil(orig_height / block_h)
-    padded_h1, padded_h2, padded_w1, padded_w2 = math.floor((padded_height - orig_height) / 2),\
-    math.ceil((padded_height - orig_height) / 2),\
-    math.floor((padded_width - orig_width) / 2),\
-    math.floor((padded_width - orig_width) / 2)
+    padded_width = math.ceil(orig_width / block_w) * block_w
+    padded_height = math.ceil(orig_height / block_h) * block_h
+    padded_h1, padded_h2, padded_w1, padded_w2 = math.floor((padded_height - orig_height) / 2), \
+                                                 math.ceil((padded_height - orig_height) / 2), \
+                                                 math.floor((padded_width - orig_width) / 2), \
+                                                 math.ceil((padded_width - orig_width) / 2)
 
     frameArr = numpy.pad(frameArr, ((padded_h1, padded_h2), (padded_w1, padded_w2)), 'reflect')
     inList = []
     outList = []
-    for i in numpy.hsplit(frameArr, int(frame.width / block_w)):
-        inList.append(numpy.vsplit(i, int(frame.height / block_h)))
+    for i in numpy.hsplit(frameArr, int(padded_width / block_w)):
+        inList.append(numpy.vsplit(i, int(padded_height / block_h)))
     for i in inList:
         tmp = []
         for j in i:
-            j = numpy.pad(i, pad_dim, 'reflect')
+            j = numpy.pad(j, pad_dim, 'reflect')
             net.blobs['input'].data[...] = j
-            tmp.append(net.forward()['conv7'])
+            net.forward()
+            j = numpy.array(net.blobs['conv7'].data, copy=True)
+            tmp.append(j)
         outList.append(tmp)
     tmpList = []
     for i in outList:
-        tmpList.append(numpy.vstack(tuple(i)))
-    outArr = numpy.hstack(tuple(tmpList))
+        for j in i:
+            j = numpy.squeeze(j)
+        tmpList.append(numpy.concatenate(i, -2))
+    outArr = numpy.concatenate(tmpList, -1)
+    outArr = numpy.squeeze(outArr)
+    sys.stderr.write(str(outArr.shape))
     outArr = outArr[padded_h1:-padded_h2, padded_w1:-padded_w2]
-
-
+    plane = frame.get_write_array(0)
+    for i in range(0, orig_width):
+        for j in range(0, orig_height):
+            plane[j, i] = outArr[j, i]
+    return frame
 
 
 def Waifu2x(clip, block_w=128, block_h=128, mode=0):
@@ -84,7 +95,8 @@ def Waifu2x(clip, block_w=128, block_h=128, mode=0):
     else:
         pre1 = clip
 
-    returnClip = vs_core.std.FrameEval(pre1,functools.partial(
-            FrameWaifu, clip=pre1, net=net, block_h=block_h, block_w=block_w))
+    returnClip = vs_core.std.ModifyFrame(pre1, pre1,
+                                         functools.partial(FrameWaifu,
+                                                           net=net, block_h=block_h, block_w=block_w))
 
     return returnClip
