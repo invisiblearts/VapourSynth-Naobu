@@ -16,11 +16,16 @@ def get_data_from_frame(frame, dim):
     del arr
     return returnList
 
-fileName = 'train.h5'
-data = '00003.mp4'
+prefix = 'train'
+suffix = '.h5'
+labelOutput = prefix + '_label' + suffix
+dataOutput = prefix + '_data' + suffix
+
+data = '00003.mp4' # Edit it to your video source
 label = '00003.m2ts'
 dataDim = 80
-paddedDim = dataDim + 12
+padDim = 6 # Actually 6 on each side
+paddedDim = dataDim + 2 * padDim
 
 
 # Get source and extract Y
@@ -42,9 +47,10 @@ sampleNum = sampleFrameNum * samplePerFrame
 assert labelClip.num_frames >= sampleFrameNum
 
 # Prepare HDF5 database
-file = h5py.File(fileName, 'w')
-file.create_dataset('data', (sampleNum, 1, paddedDim, paddedDim), 'single')
-file.create_dataset('label', (sampleNum, 1, dataDim, dataDim), 'single')
+labelFile = h5py.File(labelOutput, 'w')
+dataFile = h5py.File(dataOutput, 'w')
+datafile.create_dataset('data', (sampleNum, 1, paddedDim, paddedDim), 'single')
+labelfile.create_dataset('label', (sampleNum, 1, dataDim, dataDim), 'single')
 
 startloc = 0
 
@@ -62,8 +68,8 @@ while i < sampleFrameNum:
     m = 0
     while m < samplePerFrame:
         current_num = i * samplePerFrame + m
-        file['data'][current_num] = dataSubList[m]
-        file['label'][current_num] = labelSubList[m][6:-6, 6:-6]
+        datafile['data'][current_num] = dataSubList[m]
+        labelfile['label'][current_num] = labelSubList[m][padDim:-padDim, padDim:-padDim]
         m += 1
     i += 1
     del currentDataFrame, currentLabelFrame, dataSubList, labelSubList
